@@ -2,20 +2,21 @@ import streamlit as st
 import google.generativeai as genai
 import tempfile
 import os
+import time  # أضفنا هذه المكتبة لإدارة وقت الانتظار
 
 # 1. إعداد الصفحة
 st.set_page_config(page_title="المساعد التعليمي الذكي", page_icon="📚", layout="centered")
 st.title("📚 المساعد التعليمي الذكي")
 st.markdown("مرحباً بك! ارفع كتابك المدرسي بصيغة PDF واسألني أي سؤال من المنهج.")
 
-# 2. إعداد مفتاح API من إعدادات الأمان في Streamlit
+# 2. إعداد مفتاح API
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 except:
     st.error("يرجى التأكد من إضافة مفتاح GEMINI_API_KEY في إعدادات Secrets.")
     st.stop()
 
-# 3. إعداد نموذج الذكاء الاصطناعي مع "التلقين" الصارم
+# 3. التلقين والنموذج
 system_instruction = """
 أنت مساعد تعليمي ذكي للطلاب. لقد قام الطالب برفع كتاب مدرسي بصيغة PDF.
 مهمتك هي الإجابة على أسئلة الطالب بناءً على محتوى هذا الكتاب فقط. 
@@ -25,24 +26,22 @@ system_instruction = """
 عليك التحدث باللغة العربية الفصحى دائماً وبأسلوب ودود ومبسط للطالب.
 """
 
-# تهيئة النموذج
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     system_instruction=system_instruction
 )
 
-# 4. تهيئة ذاكرة المحادثة في Streamlit
+# 4. تهيئة الذاكرة
 if "chat_session" not in st.session_state:
     st.session_state.chat_session = None
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 5. واجهة رفع الملف (الكتاب المدرسي)
+# 5. واجهة رفع الملف
 uploaded_file = st.file_uploader("قم بتحميل الكتاب المدرسي بصيغة PDF", type=["pdf"])
 
 if uploaded_file and st.session_state.chat_session is None:
-    with st.spinner("جاري قراءة الكتاب واستيعاب المنهج... يرجى الانتظار ⏳"):
-        # حفظ الملف مؤقتاً لرفعه لـ Gemini
+    with st.spinner("جاري قراءة الكتاب واستيعاب المنهج... قد يستغرق هذا بضع ثوانٍ ⏳"):
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
             tmp_file.write(uploaded_file.getvalue())
             tmp_path = tmp_file.name
@@ -51,17 +50,25 @@ if uploaded_file and st.session_state.chat_session is None:
             # رفع الملف إلى خوادم Gemini
             gemini_file = genai.upload_file(path=tmp_path, display_name=uploaded_file.name)
             
-            # بدء محادثة جديدة مع إرفاق الكتاب
-            st.session_state.chat_session = model.start_chat(
-                history=[
-                    {"role": "user", "parts": [gemini_file, "هذا هو الكتاب المدرسي. يرجى قراءته والاعتماد عليه فقط للإجابة على أسئلتي القادمة بناءً على التعليمات المعطاة لك."]}
-                ]
-            )
+            # --- التعديل الجوهري 1: الانتظار حتى تكتمل المعالجة في خوادم جوجل ---
+            while gemini_file.state.name == "PROCESSING":
+                time.sleep(3) # الانتظار 3 ثواني ثم التحقق مجدداً
+                gemini_file = genai.get_file(gemini_file.name)
+            
+            if gemini_file.state.name == "FAILED":
+                st.error("عذراً، حدث خطأ في خوادم جوجل أثناء معالجة هذا الكتاب. يرجى المحاولة بملف آخر.")
+                st.stop()
+            
+            # --- التعديل الجوهري 2: بدء محادثة فارغة ثم إرسال الكتاب كأول رسالة ---
+            st.session_state.chat_session = model.start_chat(history=[])
+            
+            initial_prompt = "هذا هو الكتاب المدرسي. يرجى قراءته والاعتماد عليه فقط للإجابة على أسئلتي القادمة بناءً على التعليمات المعطاة لك."
+            st.session_state.chat_session.send_message([gemini_file, initial_prompt])
+            
             st.success("✅ تم قراءة الكتاب بنجاح! يمكنك الآن طرح أسئلتك بالأسفل.")
         except Exception as e:
             st.error(f"حدث خطأ أثناء معالجة الملف: {e}")
         finally:
-            # حذف الملف المؤقت من الخادم
             os.remove(tmp_path)
 
 # 6. عرض سجل المحادثة
@@ -69,21 +76,21 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 7. واجهة الدردشة (لا تظهر إلا بعد رفع الكتاب)
+# 7. واجهة الدردشة
 if st.session_state.chat_session is not None:
     user_prompt = st.chat_input("اسألني عن أي شيء في المنهج...")
     
     if user_prompt:
-        # عرض رسالة المستخدم
         st.session_state.messages.append({"role": "user", "content": user_prompt})
         with st.chat_message("user"):
             st.markdown(user_prompt)
             
-        # الحصول على الرد من البوت
         with st.chat_message("assistant"):
             with st.spinner("جاري البحث في الكتاب..."):
-                response = st.session_state.chat_session.send_message(user_prompt)
-                st.markdown(response.text)
-        
-        # حفظ رد البوت في السجل
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
+                try:
+                    # إضافة ميزة اصطياد الأخطاء (try/except) لمنع انهيار التطبيق
+                    response = st.session_state.chat_session.send_message(user_prompt)
+                    st.markdown(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                except Exception as e:
+                    st.error(f"حدث خطأ أثناء الاتصال بالخادم: {e}")
