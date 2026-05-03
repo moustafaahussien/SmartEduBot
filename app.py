@@ -6,7 +6,7 @@ from datetime import datetime
 
 # 1. إعداد الصفحة
 st.set_page_config(
-    page_title="المساعد التعليمي الذكي4", 
+    page_title="المساعد التعليمي الذكي5", 
     page_icon="📚", 
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -29,7 +29,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📚 المساعد التعليمي الذكي")
+st.title("📚 5المساعد التعليمي الذكي")
 st.markdown("مرحباً بك! ارفع كتابك المدرسي بصيغة PDF واسألني أي سؤال من المنهج.")
 
 # 2. إعداد مفتاح API من إعدادات الأمان في Streamlit
@@ -59,7 +59,7 @@ system_instruction = """
 
 # تهيئة النموذج (استخدام Pro للكتب الأكبر)
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",  # يمكن تغييرها إلى "gemini-1.5-pro" للكتب الكبيرة
+    model_name="gemini-2.0-flash",  # ✅ استخدام النموذج الجديد
     system_instruction=system_instruction
 )
 
