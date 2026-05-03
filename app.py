@@ -59,7 +59,7 @@ system_instruction = """
 
 # تهيئة النموذج (استخدام Pro للكتب الأكبر)
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash-lite",  # ✅ استخدام النموذج الجديد
+    model_name="gemini-2.5-flash",  # ✅ استخدام النموذج الجديد
     system_instruction=system_instruction
 )
 
