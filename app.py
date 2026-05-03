@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import tempfile
 import os
-import time  # أضفنا هذه المكتبة لإدارة وقت الانتظار
+import time
 
 # 1. إعداد الصفحة
 st.set_page_config(page_title="المساعد التعليمي الذكي", page_icon="📚", layout="centered")
@@ -16,7 +16,7 @@ except:
     st.error("يرجى التأكد من إضافة مفتاح GEMINI_API_KEY في إعدادات Secrets.")
     st.stop()
 
-# 3. التلقين والنموذج
+# 3. التلقين والنموذج (تم إرجاع الاسم الأصلي الصحيح)
 system_instruction = """
 أنت مساعد تعليمي ذكي للطلاب. لقد قام الطالب برفع كتاب مدرسي بصيغة PDF.
 مهمتك هي الإجابة على أسئلة الطالب بناءً على محتوى هذا الكتاب فقط. 
@@ -27,7 +27,7 @@ system_instruction = """
 """
 
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-1.5-flash", 
     system_instruction=system_instruction
 )
 
@@ -47,23 +47,30 @@ if uploaded_file and st.session_state.chat_session is None:
             tmp_path = tmp_file.name
         
         try:
-            # رفع الملف إلى خوادم Gemini
             gemini_file = genai.upload_file(path=tmp_path, display_name=uploaded_file.name)
             
-            # --- التعديل الجوهري 1: الانتظار حتى تكتمل المعالجة في خوادم جوجل ---
+            # الانتظار حتى تكتمل المعالجة في خوادم جوجل
             while gemini_file.state.name == "PROCESSING":
-                time.sleep(3) # الانتظار 3 ثواني ثم التحقق مجدداً
+                time.sleep(3)
                 gemini_file = genai.get_file(gemini_file.name)
             
             if gemini_file.state.name == "FAILED":
-                st.error("عذراً، حدث خطأ في خوادم جوجل أثناء معالجة هذا الكتاب. يرجى المحاولة بملف آخر.")
+                st.error("عذراً، حدث خطأ في خوادم جوجل أثناء معالجة هذا الكتاب.")
                 st.stop()
             
-            # --- التعديل الجوهري 2: بدء محادثة فارغة ثم إرسال الكتاب كأول رسالة ---
-            st.session_state.chat_session = model.start_chat(history=[])
-            
-            initial_prompt = "هذا هو الكتاب المدرسي. يرجى قراءته والاعتماد عليه فقط للإجابة على أسئلتي القادمة بناءً على التعليمات المعطاة لك."
-            st.session_state.chat_session.send_message([gemini_file, initial_prompt])
+            # الحل الجذري: إدراج الكتاب في الذاكرة مع رد افتراضي لضبط تسلسل المحادثة
+            st.session_state.chat_session = model.start_chat(
+                history=[
+                    {
+                        "role": "user", 
+                        "parts": [gemini_file, "هذا هو الكتاب المدرسي. يرجى قراءته والاعتماد عليه فقط للإجابة على أسئلتي القادمة."]
+                    },
+                    {
+                        "role": "model", 
+                        "parts": ["مفهوم. لقد قمت بقراءة الكتاب المرفق، وسأعتمد عليه حصراً في إجاباتي وسأذكر رقم الصفحة كما طلبت."]
+                    }
+                ]
+            )
             
             st.success("✅ تم قراءة الكتاب بنجاح! يمكنك الآن طرح أسئلتك بالأسفل.")
         except Exception as e:
@@ -88,7 +95,6 @@ if st.session_state.chat_session is not None:
         with st.chat_message("assistant"):
             with st.spinner("جاري البحث في الكتاب..."):
                 try:
-                    # إضافة ميزة اصطياد الأخطاء (try/except) لمنع انهيار التطبيق
                     response = st.session_state.chat_session.send_message(user_prompt)
                     st.markdown(response.text)
                     st.session_state.messages.append({"role": "assistant", "content": response.text})
