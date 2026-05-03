@@ -17,7 +17,7 @@ except:
     st.stop()
 
 # 3. تهيئة النموذج الأساسي
-model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+model = genai.GenerativeModel(model_name="gemini-1.5-flash-001")
 
 # 4. تهيئة المتغيرات في الذاكرة (تم إلغاء start_chat)
 if "gemini_file" not in st.session_state:
